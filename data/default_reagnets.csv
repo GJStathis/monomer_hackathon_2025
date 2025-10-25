@@ -1,0 +1,16 @@
+name,concentration,unit
+Tryptone (Vegetable),100,mg/mL
+Yeast Extract,100,mg/mL
+Glycerol, NULL,(already a liquid)
+Glucose,100,mg/mL
+Sodium Chloride,5,M
+Magnesium Sulfate,1,M
+Potassium Chloride,2,M
+Ammonium Sulfate,1,M
+Potassium Phosphate (dibasic),1,M
+Potassium Phosphate (monobasic),1,M
+MOPS (pH adjusted to 7),1,M
+Calcium Chloride,1,M
+Trace metals solution,NULL,(already a liquid)
+HCl,12,N
+NaOH,10,N

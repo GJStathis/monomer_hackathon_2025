@@ -8,4 +8,5 @@ class Base(DeclarativeBase):
 from .reagent import Reagent
 from .plate_reagent_map import PlateReagentMap
 from .plate import Plate
+from .cell_growth import CellGrowth
 
