@@ -71,7 +71,7 @@ class ProtocolRepository:
         
         return protocols
     
-    def delete_by_tracker_id(self, tracker_id: int) -> int:
+    def delete_by_tracker_id(self, protocol_id: int) -> int:
         """
         Delete all protocol entries for a specific tracker.
         
@@ -82,7 +82,7 @@ class ProtocolRepository:
             Number of deleted entries
         """
         deleted_count = self.session.query(Protocol).filter(
-            Protocol.protocol_id == tracker_id
+            Protocol.protocol_id == protocol_id
         ).delete()
         self.session.commit()
         return deleted_count
