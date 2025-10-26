@@ -23,6 +23,8 @@ from src.agents.basic_research_agent import BasicResearchAgent
 from src.agents.protocol_agent import ProtocolAgent
 from src.repositories.protocol_tracker_repository import ProtocolTrackerRepository
 from src.repositories.protocol_repository import ProtocolRepository
+from src.agents.robotics_agent import RoboticsIntegrationAgent
+from src.schema.protocol import RoboticsProtocolResponse
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -238,6 +240,41 @@ async def get_protocol_detail(tracker_id: int):
         raise HTTPException(status_code=500, detail=f"Failed to retrieve protocol: {str(e)}")
     finally:
         session.close()
+
+@router.get("/protocols/{tracker_id}/robotics", response_model=RoboticsProtocolResponse)
+async def get_robotics_protocol(tracker_id: int):
+    """
+    Get the robotics protocol for a specific protocol.
+    
+    Returns both the full protocol text and the extracted Python script.
+    """
+    try:
+        robotics_agent = RoboticsIntegrationAgent()
+        protocol_text = robotics_agent.generate_protocol_script(tracker_id)
+        
+        # Extract Python script from the protocol text
+        python_script = ""
+        if "```python" in protocol_text:
+            # Find the start and end of the Python code block
+            start_marker = "```python"
+            end_marker = "```"
+            
+            start_idx = protocol_text.find(start_marker)
+            if start_idx != -1:
+                # Move past the start marker
+                start_idx += len(start_marker)
+                # Find the next ``` after the start
+                end_idx = protocol_text.find(end_marker, start_idx)
+                if end_idx != -1:
+                    python_script = protocol_text[start_idx:end_idx].strip()
+        
+        return RoboticsProtocolResponse(
+            protocol_text=protocol_text, 
+            protocol_script=python_script
+        )
+    except Exception as e:
+        logger.error(f"Error generating robotics protocol: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to generate robotics protocol: {str(e)}")
 
 
 @router.put("/protocols/{tracker_id}/refine", response_model=ProtocolDetailResponse)

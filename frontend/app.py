@@ -20,7 +20,8 @@ st.info("""
 - 🏠 **Home** (this page) - Overview and introduction
 - 🧬 **Protocol Explorer** - Generate AI-powered protocols for any organism
 - 🧪 **Protocol Outputs** - View and analyze generated protocols
-- 📊 **Protocol Results** - Experimental results and analytics
+- 📊 **Protocol Results** - Refine protocols with experimental data
+- 🤖 **Protocol Exporter** - Export protocols to OpenTrons robotics format
 """)
 
 st.markdown("---")
@@ -28,7 +29,7 @@ st.markdown("---")
 # Features section
 st.markdown("### ✨ Key Features")
 
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 
 with col1:
     st.markdown("#### 🧬 BLAST Analysis")
@@ -48,6 +49,12 @@ with col3:
     st.markdown("#### 🤖 AI Protocol Generation")
     st.markdown("""
     OpenAI-powered agent generates detailed reagent recommendations with concentrations and units.
+    """)
+
+with col4:
+    st.markdown("#### 🔬 Robotics Export")
+    st.markdown("""
+    Export protocols to OpenTrons format for automated liquid handling and experiment execution.
     """)
 
 st.markdown("---")

@@ -55,3 +55,7 @@ class ProtocolDetailResponse(BaseModel):
     created_at: datetime = Field(..., description="Creation timestamp")
     reagents: List[ReagentItem] = Field(..., description="List of reagents in the protocol")
 
+class RoboticsProtocolResponse(BaseModel):
+    """Response schema for robotics protocol."""
+    protocol_text: str = Field(..., description="Text of the robotics protocol")
+    protocol_script: str = Field(..., description="Script for the robotics protocol")
