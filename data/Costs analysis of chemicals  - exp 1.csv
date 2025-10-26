@@ -1,0 +1,18 @@
+type,value,Units
+cell concentration,1000,
+dilution,10,
+Tryptone (Vegetable),10,
+Yeast Extract,0,
+Glycerol,0,
+Glucose,5,g/L
+Sodium Chloride,0,
+Magnesium Sulfate,0,
+Potassium Chloride,0,
+Ammonium Sulfate,0,
+Potassium Phosphate (dibasic),0,
+Potassium Phosphate (monobasic),0,
+MOPS (pH adjusted to 7),0,
+Calcium Chloride,.1,
+Trace metals solution,1,ml/L
+HCl,0,
+NaOH,0,
