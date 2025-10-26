@@ -1,0 +1,302 @@
+"""
+Protocol Agent for generating scientific reagent recommendations using LangChain.
+
+This agent analyzes scientific literature and optionally absorbance data to recommend
+reagents for experiments.
+"""
+
+import os
+import pandas as pd
+from typing import Optional, List, Dict, Any
+from pathlib import Path
+from io import StringIO
+
+from langchain_openai import ChatOpenAI
+from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
+from langchain.schema import AIMessage
+from dotenv import load_dotenv
+
+load_dotenv()
+
+class ProtocolAgent:
+    """
+    An AI agent for generating scientific protocols and reagent recommendations.
+    
+    Uses LangChain and OpenAI to analyze scientific literature and experimental data
+    to suggest optimal reagent combinations, concentrations, and protocols.
+    """
+    
+    def __init__(self, model: str = "gpt-4o", temperature: float = 0.7):
+        """
+        Initialize the Protocol Agent.
+        
+        Args:
+            model: OpenAI model to use (default: gpt-4o)
+            temperature: Temperature for generation (0.0-1.0, higher = more creative)
+        """
+        self.llm = ChatOpenAI(
+            model=model,
+            temperature=temperature,
+            openai_api_key=os.getenv("OPENAI_API_KEY")
+        )
+        
+    def _create_system_prompt(self) -> str:
+        """Create the system prompt for the agent."""
+        return """You are an expert biochemist and protocol designer specializing in media optimization for microbial growth experiments.
+
+Your task is to analyze scientific literature and experimental data to recommend optimal reagent combinations for experiments. You should:
+
+1. Consider standard microbial growth media components (carbon sources, nitrogen sources, minerals, buffers, trace elements)
+2. Suggest appropriate concentrations based on established protocols and the literature provided
+3. Consider interactions between reagents
+4. Account for experimental goals (growth optimization, specific metabolite production, etc.)
+5. When absorbance data is provided, analyze growth patterns to inform recommendations
+
+Output your recommendations as a CSV table with columns:
+- name: reagent name
+- concentration: numerical concentration value (use NULL if not applicable)
+- unit: concentration unit (e.g., mg/mL, M, N, or descriptive text for liquids)
+
+For reagents that are already liquids (like glycerol or trace metals solutions), use NULL for concentration and describe the form in the unit column.
+
+Be specific and practical. Use standard laboratory concentrations and follow best practices."""
+
+    def _create_user_prompt_template(self) -> str:
+        """Create the user prompt template."""
+        return """Please analyze the following scientific literature and generate reagent recommendations:
+
+LITERATURE:
+{literature}
+
+{absorbance_section}
+
+Generate a complete CSV table of recommended reagents with appropriate concentrations and units. Include all necessary components for a complete growth medium (carbon sources, nitrogen sources, minerals, buffers, etc.).
+
+Output only the CSV data with headers: name,concentration,unit"""
+
+    def analyze_absorbance_data(self, absorbance_csv_path: str) -> str:
+        """
+        Analyze absorbance data and create a summary.
+        
+        Args:
+            absorbance_csv_path: Path to CSV file with absorbance data
+            
+        Returns:
+            String summary of the absorbance data analysis
+        """
+        try:
+            df = pd.read_csv(absorbance_csv_path, index_col=0)
+            
+            # Basic statistics
+            analysis = "ABSORBANCE DATA ANALYSIS:\n"
+            analysis += f"- Time points measured: {len(df)} samples\n"
+            analysis += f"- Wells measured: {len(df.columns)} wells (96-well plate)\n"
+            analysis += f"- Time range: {df.index.min()} to {df.index.max()} seconds ({df.index.max() / 3600:.1f} hours)\n"
+            
+            # Calculate growth metrics
+            initial_values = df.iloc[0]
+            final_values = df.iloc[-1]
+            growth = final_values - initial_values
+            
+            # Identify best performing wells
+            top_wells = growth.nlargest(5)
+            analysis += f"\nTop 5 performing wells (by growth):\n"
+            for well, growth_val in top_wells.items():
+                analysis += f"  - Well {well}: Initial={initial_values[well]:.3f}, Final={final_values[well]:.3f}, Growth={growth_val:.3f}\n"
+            
+            # Identify poor performing wells
+            bottom_wells = growth.nsmallest(5)
+            analysis += f"\nBottom 5 performing wells:\n"
+            for well, growth_val in bottom_wells.items():
+                analysis += f"  - Well {well}: Initial={initial_values[well]:.3f}, Final={final_values[well]:.3f}, Growth={growth_val:.3f}\n"
+            
+            # Overall statistics
+            analysis += f"\nOverall statistics:\n"
+            analysis += f"  - Mean final absorbance: {final_values.mean():.3f} ± {final_values.std():.3f}\n"
+            analysis += f"  - Mean growth: {growth.mean():.3f} ± {growth.std():.3f}\n"
+            
+            return analysis
+            
+        except Exception as e:
+            return f"Error analyzing absorbance data: {str(e)}"
+
+    def generate_protocol(
+        self,
+        literature: str,
+        absorbance_csv_path: Optional[str] = None,
+        output_csv_path: Optional[str] = None
+    ) -> pd.DataFrame:
+        """
+        Generate reagent recommendations based on literature and optional absorbance data.
+        
+        Args:
+            literature: Scientific literature text to analyze
+            absorbance_csv_path: Optional path to CSV with absorbance data
+            output_csv_path: Optional path to save output CSV
+            
+        Returns:
+            DataFrame with reagent recommendations (name, concentration, unit)
+        """
+        # Analyze absorbance data if provided
+        absorbance_section = ""
+        if absorbance_csv_path:
+            absorbance_analysis = self.analyze_absorbance_data(absorbance_csv_path)
+            absorbance_section = f"\n{absorbance_analysis}\n\nPlease consider the growth patterns shown in the absorbance data when making your recommendations. Focus on conditions that promote robust growth or match the experimental goals described in the literature."
+        
+        # Create the prompt
+        system_prompt = self._create_system_prompt()
+        user_prompt_template = self._create_user_prompt_template()
+        
+        # Format the user prompt
+        user_prompt = user_prompt_template.format(
+            literature=literature,
+            absorbance_section=absorbance_section
+        )
+        
+        # Create chat prompt
+        messages = [
+            SystemMessagePromptTemplate.from_template(system_prompt),
+            HumanMessagePromptTemplate.from_template(user_prompt)
+        ]
+        chat_prompt = ChatPromptTemplate.from_messages(messages)
+        
+        # Generate response
+        formatted_prompt = chat_prompt.format_messages(
+            literature=literature,
+            absorbance_section=absorbance_section
+        )
+        
+        response = self.llm.invoke(formatted_prompt)
+        
+        # Parse CSV from response
+        csv_content = response.content.strip()
+        
+        # Handle markdown code blocks if present
+        if "```" in csv_content:
+            # Extract content between code blocks
+            parts = csv_content.split("```")
+            for part in parts:
+                if "name,concentration,unit" in part or "name,concentration" in part:
+                    csv_content = part.strip()
+                    # Remove language identifier if present (e.g., "csv\n")
+                    lines = csv_content.split("\n")
+                    if lines[0].lower() in ["csv", "text"]:
+                        csv_content = "\n".join(lines[1:])
+                    break
+        
+        # Parse CSV
+        try:
+            df = pd.read_csv(StringIO(csv_content))
+            
+            # Save if output path provided
+            if output_csv_path:
+                df.to_csv(output_csv_path, index=False)
+                print(f"Saved reagent recommendations to {output_csv_path}")
+            
+            return df
+            
+        except Exception as e:
+            print(f"Error parsing CSV response: {e}")
+            print(f"Raw response:\n{csv_content}")
+            raise
+    
+    def refine_protocol(
+        self,
+        existing_protocol_df: pd.DataFrame,
+        feedback: str,
+        literature: Optional[str] = None
+    ) -> pd.DataFrame:
+        """
+        Refine an existing protocol based on feedback.
+        
+        Args:
+            existing_protocol_df: DataFrame with current protocol
+            feedback: User feedback or experimental observations
+            literature: Optional additional literature to consider
+            
+        Returns:
+            DataFrame with refined reagent recommendations
+        """
+        # Convert existing protocol to CSV string
+        existing_csv = existing_protocol_df.to_csv(index=False)
+        
+        refinement_prompt = f"""You are refining an existing experimental protocol based on feedback.
+
+CURRENT PROTOCOL (CSV):
+{existing_csv}
+
+FEEDBACK/OBSERVATIONS:
+{feedback}
+
+{f"ADDITIONAL LITERATURE:\n{literature}\n" if literature else ""}
+
+Please provide an updated CSV with modified reagent recommendations that address the feedback. Maintain the same CSV format (name,concentration,unit).
+
+Output only the refined CSV data:"""
+
+        messages = [
+            SystemMessagePromptTemplate.from_template(self._create_system_prompt()),
+            HumanMessagePromptTemplate.from_template(refinement_prompt)
+        ]
+        chat_prompt = ChatPromptTemplate.from_messages(messages)
+        
+        formatted_prompt = chat_prompt.format_messages()
+        response = self.llm.invoke(formatted_prompt)
+        
+        # Parse CSV from response
+        csv_content = response.content.strip()
+        
+        # Handle markdown code blocks
+        if "```" in csv_content:
+            parts = csv_content.split("```")
+            for part in parts:
+                if "name,concentration,unit" in part:
+                    csv_content = part.strip()
+                    lines = csv_content.split("\n")
+                    if lines[0].lower() in ["csv", "text"]:
+                        csv_content = "\n".join(lines[1:])
+                    break
+        
+        return pd.read_csv(StringIO(csv_content))
+
+
+def main():
+    """Example usage of the Protocol Agent."""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Generate scientific protocols using AI")
+    parser.add_argument("--absorbance", type=str, help="Path to absorbance CSV data")
+    parser.add_argument("--output", type=str, default="protocol_output.csv", help="Output CSV path")
+    parser.add_argument("--model", type=str, default="gpt-4o", help="OpenAI model to use")
+    
+    args = parser.parse_args()
+
+    root_dir = Path(__file__).parent.parent.parent
+    literature_file = root_dir / 'data' / 'vibrio_natriegens'
+    absorbance_file = root_dir / 'data' / 'plate_0_abs.csv'
+    
+    # Load literature
+    if literature_file:
+        with open(literature_file, 'r') as f:
+            literature = f.read()
+    
+    # Initialize agent
+    print("Initializing Protocol Agent...")
+    agent = ProtocolAgent(model=args.model)
+    
+    # Generate protocol
+    print("Generating protocol recommendations...")
+    df = agent.generate_protocol(
+        literature=literature,
+        absorbance_csv_path=absorbance_file,
+        output_csv_path=os.path.join(root_dir, 'protocols', 'vibrio_natriegens_protocol.csv')
+    )
+    
+    print("\nGenerated Protocol:")
+    print(df.to_string(index=False))
+    print(f"\nSaved to: {os.path.join(root_dir, 'protocols', 'vibrio_natriegens_protocol.csv')}")
+
+
+if __name__ == "__main__":
+    main()
+
