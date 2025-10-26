@@ -87,11 +87,24 @@ Be specific and practical. Use standard laboratory concentrations and follow bes
 LITERATURE:
 {literature}
 
+{current_protocol}
+
 {absorbance_section}
 
 Generate a complete CSV table of recommended reagents with appropriate concentrations and units. Include all necessary components for a complete growth medium (carbon sources, nitrogen sources, minerals, buffers, etc.).
 
 Output only the CSV data with headers: name,concentration,unit"""
+
+    def _get_max_idx(self, index: pd.Index) -> int:
+        max_idx = 0
+        for idx in index:
+            try:
+                idx = int(idx)
+                if idx > max_idx:
+                    max_idx = idx
+            except ValueError:
+                continue
+        return max_idx
 
     def analyze_absorbance_data(self, absorbance_csv_path: str) -> str:
         """
@@ -104,45 +117,93 @@ Output only the CSV data with headers: name,concentration,unit"""
             String summary of the absorbance data analysis
         """
         try:
-            df = pd.read_csv(absorbance_csv_path, index_col=0)
+            # Read the CSV file and filter out summary rows
+            all_data = pd.read_csv(absorbance_csv_path)
             
-            # Basic statistics
-            analysis = "ABSORBANCE DATA ANALYSIS:\n"
-            analysis += f"- Time points measured: {len(df)} samples\n"
-            analysis += f"- Wells measured: {len(df.columns)} wells (96-well plate)\n"
-            analysis += f"- Time range: {df.index.min()} to {df.index.max()} seconds ({df.index.max() / 3600:.1f} hours)\n"
+            # Keep only rows where the first column (time) is numeric
+            # This filters out empty rows and summary rows
+            valid_rows = []
+            for idx, row in all_data.iterrows():
+                first_col = row.iloc[0]
+                # Check if first column is numeric (time in seconds)
+                try:
+                    if pd.notna(first_col):
+                        float(first_col)
+                        valid_rows.append(idx)
+                except (ValueError, TypeError):
+                    # Stop when we hit non-numeric data
+                    break
+            
+            # Extract only the time-series data
+            if not valid_rows:
+                return "Error: No valid time-series data found in CSV"
+            
+            df = all_data.loc[valid_rows].copy()
+            df = df.set_index(df.columns[0])  # Set first column (time) as index
+            df.index.name = 'Time_seconds'
+            
+            # Convert all columns to numeric, coercing errors
+            for col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+            
+            # Remove any columns that are all NaN
+            df = df.dropna(axis=1, how='all')
+            
+            max_runtime = self._get_max_idx(df.index)
             
             # Calculate growth metrics
             initial_values = df.iloc[0]
             final_values = df.iloc[-1]
             growth = final_values - initial_values
             
+            # Basic statistics
+            analysis = "ABSORBANCE DATA ANALYSIS:\n"
+            analysis += f"- Time points measured: {len(df)} samples\n"
+            analysis += f"- Wells measured: {len(df.columns)} wells\n"
+            analysis += f"- Time range: {int(df.index[0])} to {max_runtime} seconds ({max_runtime / 3600:.1f} hours)\n"
+            analysis += "\n"
+            
             # Identify best performing wells
             top_wells = growth.nlargest(5)
-            analysis += f"\nTop 5 performing wells (by growth):\n"
+            analysis += f"Top 5 performing wells (by growth):\n"
             for well, growth_val in top_wells.items():
                 analysis += f"  - Well {well}: Initial={initial_values[well]:.3f}, Final={final_values[well]:.3f}, Growth={growth_val:.3f}\n"
+            analysis += "\n"
             
             # Identify poor performing wells
             bottom_wells = growth.nsmallest(5)
-            analysis += f"\nBottom 5 performing wells:\n"
+            analysis += f"Bottom 5 performing wells:\n"
             for well, growth_val in bottom_wells.items():
                 analysis += f"  - Well {well}: Initial={initial_values[well]:.3f}, Final={final_values[well]:.3f}, Growth={growth_val:.3f}\n"
+            analysis += "\n"
             
             # Overall statistics
-            analysis += f"\nOverall statistics:\n"
+            analysis += f"Overall statistics:\n"
             analysis += f"  - Mean final absorbance: {final_values.mean():.3f} ± {final_values.std():.3f}\n"
             analysis += f"  - Mean growth: {growth.mean():.3f} ± {growth.std():.3f}\n"
+            analysis += f"  - Max growth: {growth.max():.3f} (Well {growth.idxmax()})\n"
+            analysis += f"  - Min growth: {growth.min():.3f} (Well {growth.idxmin()})\n"
+            analysis += "\n"
             
+            # Include sample of raw data for context
+            analysis += f"Sample of absorbance data (first 5 and last 5 timepoints):\n"
+            analysis += "\nFirst 5 timepoints:\n"
+            analysis += df.head(5).to_string()
+            analysis += "\n\nLast 5 timepoints:\n"
+            analysis += df.tail(5).to_string()
+            analysis += "\n"
+
             return analysis
             
         except Exception as e:
+            self.logger.error(f"Error analyzing absorbance data: {str(e)}", exc_info=True)
             return f"Error analyzing absorbance data: {str(e)}"
 
     def generate_protocol(
         self,
         literature: str,
         absorbance_csv_path: Optional[str] = None,
+        tracker_id: Optional[int] = None
     ) -> pd.DataFrame:
         """
         Generate reagent recommendations based on literature and optional absorbance data.
@@ -155,6 +216,22 @@ Output only the CSV data with headers: name,concentration,unit"""
         Returns:
             DataFrame with reagent recommendations (name, concentration, unit)
         """
+        # Database setup
+        session = self.SessionLocal()
+        tracker_repo = ProtocolTrackerRepository(session)
+        protocol_repo = ProtocolRepository(session)
+
+        # Get current protocol if tracker ID is provided
+        protocol_string = ""
+        if tracker_id:
+            tracker = tracker_repo.get_by_id(tracker_id)
+
+            protocols = protocol_repo.get_by_tracker_id(tracker_id)
+            protocol_string = "CURRENT PROTOCOL:\n"
+            for protocol in protocols:
+                protocol_string += f"{protocol.reagent_name}: {protocol.concentration} {protocol.unit}\n"
+            protocol_string += "\n" 
+        
         # Analyze absorbance data if provided
         absorbance_section = ""
         if absorbance_csv_path:
@@ -168,7 +245,8 @@ Output only the CSV data with headers: name,concentration,unit"""
         # Format the user prompt
         user_prompt = user_prompt_template.format(
             literature=literature,
-            absorbance_section=absorbance_section
+            absorbance_section=absorbance_section,
+            current_protocol=protocol_string
         )
         
         # Create chat prompt
@@ -246,12 +324,13 @@ Output only the CSV data with headers: name,concentration,unit"""
                 self.logger.info(f"Saved reagent recommendations to {os.path.join(self.protocol_dir, f'{self.organism_name}_protocol_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv')}")
             
             # Save to database
-            session = self.SessionLocal()
             try:
                 # Create protocol tracker entry
-                tracker_repo = ProtocolTrackerRepository(session)
-                tracker = tracker_repo.create(target_organism=self.organism_name)
-                self.logger.info(f"Created protocol tracker with ID: {tracker.id}")
+                if not tracker_id:
+                    tracker = tracker_repo.create(target_organism=self.organism_name)
+                    self.logger.info(f"Created protocol tracker with ID: {tracker.id}")
+
+                self.logger.info(f"Using tracker ID: {tracker.id}")
                 
                 # Prepare reagents data
                 reagents = []
@@ -270,10 +349,16 @@ Output only the CSV data with headers: name,concentration,unit"""
                 
                 # Create protocol entries
                 protocol_repo = ProtocolRepository(session)
-                protocols = protocol_repo.create_many(
-                    protocol_id=tracker.id,
-                    reagents=reagents
-                )
+                if tracker_id:
+                    protocols = protocol_repo.update_all_for_tracker(
+                        protocol_id=tracker.id,
+                        reagents=reagents
+                    )
+                else:
+                    protocols = protocol_repo.create_many(
+                        protocol_id=tracker.id,
+                        reagents=reagents
+                    )
                 self.logger.info(f"Saved {len(protocols)} reagents to database for tracker ID: {tracker.id}")
                 
             except Exception as db_error:

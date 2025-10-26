@@ -315,39 +315,28 @@ async def refine_protocol(
         # Generate protocol DataFrame with absorbance data
         protocol_df = protocol_agent.generate_protocol(
             literature=literature_content,
-            absorbance_csv_path=absorbance_csv_path
+            absorbance_csv_path=absorbance_csv_path,
+            tracker_id=tracker_id
         )
         
         logger.info(f"Generated refined protocol with {len(protocol_df)} reagents")
-        
-        # Step 4: Update the existing protocol in the database
-        session = SessionLocal()
-        try:
-            protocol_repo = ProtocolRepository(session)
-            
-            # Prepare reagents data
-            reagents = []
-            for _, row in protocol_df.iterrows():
-                reagent = {
-                    'reagent_name': row['name'],
-                    'unit': row['unit'],
-                    'concentration': row.get('concentration') if pd.notna(row.get('concentration')) else None
-                }
-                reagents.append(reagent)
-            
-            # Update protocols for this tracker (replaces existing)
-            updated_protocols = protocol_repo.update_all_for_tracker(
-                protocol_id=tracker_id,
-                reagents=reagents
-            )
-            logger.info(f"Updated {len(updated_protocols)} reagents for tracker ID: {tracker_id}")
-            
-        finally:
-            session.close()
-        
-        # Step 5: Return the updated protocol
-        return await get_protocol_detail(tracker_id)
-        
+
+
+        response = ProtocolDetailResponse(
+            tracker_id=tracker_id,
+            organism_name=organism_name,
+            created_at=tracker.created_at,
+            reagents=[
+                ReagentItem(
+                    name=row['name'],
+                    concentration=row.get('concentration', None) if pd.notna(row.get('concentration', None)) else None,
+                    unit=row['unit']
+                )
+                for _, row in protocol_df.iterrows()
+            ]
+        )
+
+        return response
     except HTTPException:
         raise
     except Exception as e:
