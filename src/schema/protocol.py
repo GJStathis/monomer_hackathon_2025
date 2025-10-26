@@ -3,14 +3,14 @@ Pydantic schemas for protocol API endpoints.
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Union
 from datetime import datetime
 
 
 class ReagentItem(BaseModel):
     """Schema for a single reagent item in the protocol."""
     name: str = Field(..., description="Name of the reagent")
-    concentration: Optional[float] = Field(None, description="Concentration value (null for liquids)")
+    concentration: Optional[Union[float, str]] = Field(None, description="Concentration value (null for liquids, can be string)")
     unit: str = Field(..., description="Unit of concentration or description for liquids")
 
 

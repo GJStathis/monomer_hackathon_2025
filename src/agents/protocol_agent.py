@@ -256,10 +256,15 @@ Output only the CSV data with headers: name,concentration,unit"""
                 # Prepare reagents data
                 reagents = []
                 for _, row in df.iterrows():
+                    # Convert concentration to string if it exists
+                    concentration = None
+                    if pd.notna(row.get('concentration')):
+                        concentration = str(row.get('concentration'))
+                    
                     reagent = {
                         'reagent_name': row['name'],
                         'unit': row['unit'],
-                        'concentration': row.get('concentration') if pd.notna(row.get('concentration')) else None
+                        'concentration': concentration
                     }
                     reagents.append(reagent)
                 

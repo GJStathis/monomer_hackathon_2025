@@ -16,7 +16,7 @@ class Protocol(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     protocol_id: Mapped[int] = mapped_column(Integer, ForeignKey("protocol_tracker.id"), nullable=False)
     reagent_name: Mapped[str] = mapped_column(String, nullable=False)
-    concentration: Mapped[float | None] = mapped_column(Float, nullable=True)
+    concentration: Mapped[str | None] = mapped_column(String, nullable=True)
     unit: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     

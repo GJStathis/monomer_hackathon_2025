@@ -27,7 +27,7 @@ class ProtocolRepository:
         protocol_id: int,
         reagent_name: str,
         unit: str,
-        concentration: Optional[float] = None
+        concentration: Optional[str] = None
     ) -> Protocol:
         """Create a new protocol entry"""
         protocol = Protocol(
