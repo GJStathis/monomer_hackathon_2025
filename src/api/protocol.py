@@ -239,3 +239,121 @@ async def get_protocol_detail(tracker_id: int):
     finally:
         session.close()
 
+
+@router.put("/protocols/{tracker_id}/refine", response_model=ProtocolDetailResponse)
+async def refine_protocol(
+    tracker_id: int,
+    absorbance_csv_path: str = Query(..., description="Path to absorbance data CSV file"),
+    research_agent: str = Query("basic", description="Research agent to use: 'basic' (OpenAI o1) or 'futurehouse'")
+):
+    """
+    Refine an existing protocol with absorbance data.
+    
+    This endpoint:
+    1. Retrieves the existing protocol
+    2. Uses BLAST API to find related organisms
+    3. Uses Research Agent to gather literature
+    4. Uses Protocol Agent to generate improved protocol with absorbance data
+    5. Updates the existing protocol (replaces reagents)
+    
+    Args:
+        tracker_id: Protocol tracker ID to update
+        absorbance_csv_path: Path to absorbance data CSV file
+        research_agent: Research agent to use ('basic' or 'futurehouse')
+        
+    Returns:
+        ProtocolDetailResponse with updated reagent list
+    """
+    try:
+        logger.info(f"Starting protocol refinement for tracker ID: {tracker_id}")
+        
+        # Get existing protocol
+        session = SessionLocal()
+        try:
+            tracker_repo = ProtocolTrackerRepository(session)
+            protocol_repo = ProtocolRepository(session)
+            
+            # Get the tracker
+            tracker = tracker_repo.get_by_id(tracker_id)
+            if not tracker:
+                raise HTTPException(status_code=404, detail=f"Protocol tracker {tracker_id} not found")
+            
+            organism_name = tracker.target_organism
+            logger.info(f"Refining protocol for organism: {organism_name}")
+            
+        finally:
+            session.close()
+        
+        # Step 1: Use BlastAPI to find related organisms
+        logger.info("Step 1: Finding related organisms via BLAST...")
+        blast_api = BlastAPI()
+        related_organisms = blast_api.get_top_10_related_organisms(organism_name)
+        logger.info(f"Found {len(related_organisms)} related organisms: {related_organisms}")
+        
+        # Step 2: Use Research Agent to gather literature for related organisms
+        logger.info(f"Step 2: Gathering scientific literature via {research_agent} agent...")
+        
+        # Add the original organism to the list
+        all_organisms = [organism_name] + related_organisms
+        logger.info(f"Querying literature for {len(all_organisms)} organisms")
+        
+        # Choose the appropriate research agent
+        if research_agent.lower() == "futurehouse":
+            agent = FutureHouseAPI()
+        else:  # default to basic
+            agent = BasicResearchAgent(model="o1-mini")
+        
+        # Run the task and get the literature content (returns string directly)
+        literature_content = agent.run_task(all_organisms)
+        
+        logger.info(f"Gathered literature content ({len(literature_content)} characters)")
+        
+        # Step 3: Use ProtocolAgent to generate the refined protocol
+        logger.info("Step 3: Generating refined protocol with absorbance data...")
+        protocol_agent = ProtocolAgent(organism_name=organism_name)
+        
+        # Generate protocol DataFrame with absorbance data
+        protocol_df = protocol_agent.generate_protocol(
+            literature=literature_content,
+            absorbance_csv_path=absorbance_csv_path
+        )
+        
+        logger.info(f"Generated refined protocol with {len(protocol_df)} reagents")
+        
+        # Step 4: Update the existing protocol in the database
+        session = SessionLocal()
+        try:
+            protocol_repo = ProtocolRepository(session)
+            
+            # Prepare reagents data
+            reagents = []
+            for _, row in protocol_df.iterrows():
+                reagent = {
+                    'reagent_name': row['name'],
+                    'unit': row['unit'],
+                    'concentration': row.get('concentration') if pd.notna(row.get('concentration')) else None
+                }
+                reagents.append(reagent)
+            
+            # Update protocols for this tracker (replaces existing)
+            updated_protocols = protocol_repo.update_all_for_tracker(
+                protocol_id=tracker_id,
+                reagents=reagents
+            )
+            logger.info(f"Updated {len(updated_protocols)} reagents for tracker ID: {tracker_id}")
+            
+        finally:
+            session.close()
+        
+        # Step 5: Return the updated protocol
+        return await get_protocol_detail(tracker_id)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error refining protocol: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to refine protocol: {str(e)}"
+        )
+

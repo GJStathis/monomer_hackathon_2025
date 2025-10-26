@@ -70,4 +70,41 @@ class ProtocolRepository:
             self.session.refresh(protocol)
         
         return protocols
+    
+    def delete_by_tracker_id(self, tracker_id: int) -> int:
+        """
+        Delete all protocol entries for a specific tracker.
+        
+        Args:
+            tracker_id: The tracker ID
+            
+        Returns:
+            Number of deleted entries
+        """
+        deleted_count = self.session.query(Protocol).filter(
+            Protocol.protocol_id == tracker_id
+        ).delete()
+        self.session.commit()
+        return deleted_count
+    
+    def update_all_for_tracker(
+        self,
+        protocol_id: int,
+        reagents: List[dict]
+    ) -> List[Protocol]:
+        """
+        Replace all protocols for a tracker with new ones.
+        
+        Args:
+            protocol_id: The tracker ID
+            reagents: List of dicts with keys: reagent_name, unit, concentration (optional)
+            
+        Returns:
+            List of new protocol entries
+        """
+        # Delete existing protocols
+        self.delete_by_tracker_id(protocol_id)
+        
+        # Create new protocols
+        return self.create_many(protocol_id, reagents)
 
