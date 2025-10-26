@@ -1,0 +1,53 @@
+name,concentration,unit
+LB Broth,25.0,g/L
+Tryptone,10.0,g/L
+Yeast Extract,5.0,g/L
+NaCl,20.0,g/L
+Glycerol,,20 g/L solution
+Glucose,12.0,g/L
+Na2HPO4·2H2O,8.5,g/L
+KH2PO4,3.0,g/L
+NH4Cl,1.0,g/L
+MgSO4·7H2O,0.74,g/L
+(NH4)2SO4,5.0,g/L
+Trace Elements,,appropriate solution
+NaCl (Wilms-MOPS),15.0,g/L
+Ammonium Sulfate,27.92,g/L
+Dipotassium Phosphate,12.0,g/L
+Disodium Sulfate,8.0,g/L
+Glucose,,from 550 g/L stock
+MgSO4,,from 50 g/L stock
+Thiamin,,from 10 g/L solution
+Carbenicillin,,from 2.1 solution
+BHI,37.0,g/L
+Sea Salts,,15 g/L
+LB Agar,15.0,g/L
+Agar,15.0,g/L
+Peptone,,defined amount
+Na2HPO4,12.8,g/L
+NaCl (M9 Agar),0.5,g/L
+CaCl2,,defined amount
+TBV2 Tryptone,12.0,g/L
+TBV2 Yeast Extract,24.0,g/L
+TBV2 NaCl,15.0,g/L
+TBV2 Glycerol,,0.5% v/v
+TBV2 KH2PO4,2.31,g/L
+TBV2 K2HPO4·3H2O,16.43,g/L
+ZYM NaCl,,1.5% w/v
+Instant Ocean,,1.5% w/v
+Ampicillin,,50 µg/mL
+Wolfe’s Minerals,,10 mL
+Wolfe’s Vitamins,,10 mL
+VN4 Na2HPO4,32.8,g/L
+VN4 Na2SO4,,specified proportion
+VN4 Na3-citrate,,specified proportion
+VN4 Glucose,,specified proportion
+VN4 K2HPO4,,specified proportion
+VN4 MgSO4,,specified proportion
+VN4 Na2-EDTA,,specified proportion
+VN4 FeSO4,,specified proportion
+VN4 CaCl2,,specified proportion
+VN4 MnSO4,,specified proportion
+VN4 ZnSO4,,specified proportion
+VN4 CuSO4,,specified proportion
+VN4 NiCl2,,specified proportion

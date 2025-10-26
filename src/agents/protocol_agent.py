@@ -6,15 +6,22 @@ reagents for experiments.
 """
 
 import os
+import logging
 import pandas as pd
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 from io import StringIO
+from datetime import datetime
 
 from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
 from langchain.schema import AIMessage
 from dotenv import load_dotenv
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from src.repositories.protocol_tracker_repository import ProtocolTrackerRepository
+from src.repositories.protocol_repository import ProtocolRepository
 
 load_dotenv()
 
@@ -26,20 +33,32 @@ class ProtocolAgent:
     to suggest optimal reagent combinations, concentrations, and protocols.
     """
     
-    def __init__(self, model: str = "gpt-4o", temperature: float = 0.7):
+    def __init__(self, model: str = "gpt-4o", temperature: float = 0.7, organism_name: str = "organism_name", database_url: str = "sqlite:///./database.db"):
         """
         Initialize the Protocol Agent.
         
         Args:
             model: OpenAI model to use (default: gpt-4o)
             temperature: Temperature for generation (0.0-1.0, higher = more creative)
+            organism_name: Name of the organism for this protocol
+            database_url: Database URL for storing protocols
         """
         self.llm = ChatOpenAI(
             model=model,
             temperature=temperature,
             openai_api_key=os.getenv("OPENAI_API_KEY")
         )
+
+        self.logger = logging.getLogger(__name__)
+        self.root_dir = Path(__file__).parent.parent.parent 
+        self.protocol_dir = self.root_dir / 'protocols'
+        self.organism_name = organism_name
         
+        # Database setup for saving protocols
+        self.engine = create_engine(database_url)
+        self.SessionLocal = sessionmaker(bind=self.engine)
+
+
     def _create_system_prompt(self) -> str:
         """Create the system prompt for the agent."""
         return """You are an expert biochemist and protocol designer specializing in media optimization for microbial growth experiments.
@@ -124,7 +143,6 @@ Output only the CSV data with headers: name,concentration,unit"""
         self,
         literature: str,
         absorbance_csv_path: Optional[str] = None,
-        output_csv_path: Optional[str] = None
     ) -> pd.DataFrame:
         """
         Generate reagent recommendations based on literature and optional absorbance data.
@@ -184,20 +202,86 @@ Output only the CSV data with headers: name,concentration,unit"""
                         csv_content = "\n".join(lines[1:])
                     break
         
+        # Clean up lines with extra commas in reagent names
+        lines = csv_content.split("\n")
+        fixed_lines = []
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Skip language identifiers
+            if line.lower() in ["csv", "text"]:
+                continue
+            
+            # If it's the header line, keep it as is
+            if "name,concentration,unit" in line.lower() or line.startswith("name,"):
+                fixed_lines.append(line)
+                continue
+            
+            # Count commas - we expect exactly 2 commas (3 fields)
+            comma_count = line.count(",")
+            
+            if comma_count > 2:
+                # Split and rejoin: merge all parts except last 2 into the name
+                parts = line.split(",")
+                # Join all parts except the last 2 as the name
+                name = ",".join(parts[:-2])
+                concentration = parts[-2]
+                unit = parts[-1]
+                fixed_line = f"{name},{concentration},{unit}"
+                fixed_lines.append(fixed_line)
+            else:
+                fixed_lines.append(line)
+        
+        csv_content = "\n".join(fixed_lines)
+        
         # Parse CSV
         try:
             df = pd.read_csv(StringIO(csv_content))
             
-            # Save if output path provided
-            if output_csv_path:
-                df.to_csv(output_csv_path, index=False)
-                print(f"Saved reagent recommendations to {output_csv_path}")
+            # Save CSV file if output path exists
+            if os.path.exists(self.protocol_dir):
+                df.to_csv(os.path.join(self.protocol_dir, f"{self.organism_name}_protocol_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"), index=False)
+                self.logger.info(f"Saved reagent recommendations to {os.path.join(self.protocol_dir, f'{self.organism_name}_protocol_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv')}")
+            
+            # Save to database
+            session = self.SessionLocal()
+            try:
+                # Create protocol tracker entry
+                tracker_repo = ProtocolTrackerRepository(session)
+                tracker = tracker_repo.create(target_organism=self.organism_name)
+                self.logger.info(f"Created protocol tracker with ID: {tracker.id}")
+                
+                # Prepare reagents data
+                reagents = []
+                for _, row in df.iterrows():
+                    reagent = {
+                        'reagent_name': row['name'],
+                        'unit': row['unit'],
+                        'concentration': row.get('concentration') if pd.notna(row.get('concentration')) else None
+                    }
+                    reagents.append(reagent)
+                
+                # Create protocol entries
+                protocol_repo = ProtocolRepository(session)
+                protocols = protocol_repo.create_many(
+                    protocol_id=tracker.id,
+                    reagents=reagents
+                )
+                self.logger.info(f"Saved {len(protocols)} reagents to database for tracker ID: {tracker.id}")
+                
+            except Exception as db_error:
+                self.logger.error(f"Error saving to database: {db_error}", exc_info=True)
+                # Don't raise - we still want to return the DataFrame even if DB save fails
+            finally:
+                session.close()
             
             return df
             
         except Exception as e:
-            print(f"Error parsing CSV response: {e}")
-            print(f"Raw response:\n{csv_content}")
+            self.logger.error(f"Error parsing CSV response: {e}")
+            self.logger.error(f"Raw response:\n{csv_content}")
             raise
     
     def refine_protocol(
@@ -289,7 +373,6 @@ def main():
     df = agent.generate_protocol(
         literature=literature,
         absorbance_csv_path=absorbance_file,
-        output_csv_path=os.path.join(root_dir, 'protocols', 'vibrio_natriegens_protocol.csv')
     )
     
     print("\nGenerated Protocol:")

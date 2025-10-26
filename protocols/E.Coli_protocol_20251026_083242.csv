@@ -1,0 +1,25 @@
+name,concentration,unit
+Tryptone,10.0,g/L
+Yeast Extract,5.0,g/L
+Sodium Chloride,10.0,g/L
+Na₂HPO₄·7H₂O,6.0,g/L
+KH₂PO₄,3.0,g/L
+NH₄Cl,1.0,g/L
+MgSO₄·7H₂O,0.24,g/L
+CaCl₂·2H₂O,0.025,g/L
+Glucose,20.0,mM
+MnCl₂·4H₂O,0.4,mg/L
+FeSO₄·7H₂O,0.1,mg/L
+ZnCl₂,0.03,mg/L
+Ampicillin,100.0,µg/mL
+Kanamycin,50.0,µg/mL
+Chloramphenicol,34.0,µg/mL
+Peptone,10.0,g/L
+Beef Extract,3.0,g/L
+Lactose,1.0,g/L
+Bile Salts,1.0,g/L
+Neutral Red,0.05,g/L
+Crystal Violet,0.001,g/L
+Agar,15.0,g/L
+Soytone,3.0,g/L
+Streptomycin,,optional

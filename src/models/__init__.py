@@ -10,3 +10,7 @@ from .experiment import Experiment
 from .reagent_values import ReagentValue
 from .plate import Plate
 from .plate_experiment_map import PlateExperimentMap
+from .future_house_literature import FutureHouseLiterature
+from .related_organisms import RelatedOrganisms
+from .protocol_tracker import ProtocolTracker
+from .protocol import Protocol
