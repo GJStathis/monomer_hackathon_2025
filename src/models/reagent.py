@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 from . import Base
 
 if TYPE_CHECKING:
-    from .plate_reagent_map import PlateReagentMap
+    from .reagent_values import ReagentValue
 
 class Reagent(Base):
     """Reagent model for storing chemical reagent information"""
@@ -15,8 +15,6 @@ class Reagent(Base):
     concentration: Mapped[float] = mapped_column(Float, nullable=False)
     unit: Mapped[str] = mapped_column(String, nullable=False)
     
-    # Relationship to plate_reagent_map
-    plate_reagent_maps: Mapped[list["PlateReagentMap"]] = relationship(
-        "PlateReagentMap", back_populates="reagent"
-    )
+    # Relationships
+    reagent_values: Mapped[list["ReagentValue"]] = relationship("ReagentValue", back_populates="reagent")
 

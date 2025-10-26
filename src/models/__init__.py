@@ -6,7 +6,7 @@ class Base(DeclarativeBase):
 
 # Import all models here so Alembic can detect them
 from .reagent import Reagent
-from .plate_reagent_map import PlateReagentMap
+from .experiment import Experiment
+from .reagent_values import ReagentValue
 from .plate import Plate
-from .cell_growth import CellGrowth
-
+from .plate_experiment_map import PlateExperimentMap
